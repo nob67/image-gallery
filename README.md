@@ -2,6 +2,18 @@
 
 A simple, Docker-based image gallery built with Gradio. No PHP, no Nginx, no complex configuration required.
 
+## Version Info
+
+| Component | Version | Updated |
+|-----------|---------|---------|
+| **Python** | 3.13+ | ✅ 2026-07-22 |
+| **Gradio** | 6.20.0+ | ✅ 2026-07-22 |
+| **Pillow** | 10.2.0+ | ✅ 2026-07-22 |
+| **uvicorn** | ≥0.14.0 | ✅ 2026-07-22 |
+| **websockets** | ≥10.4 | ✅ 2026-07-22 |
+
+> **Note:** Updated for full compatibility with HuggingFace Spaces and modern Gradio 6.x API. Previous version used Gradio 4.41.0 and Python 3.11.
+
 ## Features
 
 - ✅ **Upload Images** - Drag and drop or select from your computer
