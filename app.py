@@ -29,6 +29,9 @@ def save_metadata(metadata):
 def get_gallery_images():
     """Get all images from gallery directory"""
     images = []
+    if not os.path.exists(GALLERY_DIR):
+        return images
+    
     for file in sorted(os.listdir(GALLERY_DIR)):
         if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
             filepath = os.path.join(GALLERY_DIR, file)
@@ -40,13 +43,19 @@ def upload_image(file):
     if file is None:
         return "No file uploaded", get_gallery_images()
     
-    # Save uploaded file
-    filename = os.path.basename(file.name)
-    save_path = os.path.join(UPLOAD_DIR, filename)
-    
-    # Use PIL to verify it's a valid image
     try:
-        img = Image.open(file.name)
+        # Get filename
+        if hasattr(file, 'name'):
+            filename = os.path.basename(file.name)
+            file_path = file.name
+        else:
+            filename = os.path.basename(str(file))
+            file_path = str(file)
+        
+        save_path = os.path.join(GALLERY_DIR, filename)
+        
+        # Use PIL to verify it's a valid image
+        img = Image.open(file_path)
         img.save(save_path)
         
         # Update metadata
@@ -62,39 +71,30 @@ def upload_image(file):
     except Exception as e:
         return f"❌ Error uploading image: {str(e)}", get_gallery_images()
 
-def move_to_gallery(image_path):
-    """Move image from uploads to gallery"""
-    if not image_path:
+def delete_image(gallery_state):
+    """Delete image from gallery - requires Gradio 6.20+ select callback"""
+    if not gallery_state:
         return "No image selected", get_gallery_images()
     
     try:
-        filename = os.path.basename(image_path)
-        gallery_path = os.path.join(GALLERY_DIR, filename)
+        # Handle different gallery return formats
+        image_path = gallery_state
+        if isinstance(gallery_state, dict):
+            image_path = gallery_state.get('name') or gallery_state.get('image')
         
-        # Copy to gallery
-        img = Image.open(image_path)
-        img.save(gallery_path)
-        
-        return f"✅ Image moved to gallery!", get_gallery_images()
-    except Exception as e:
-        return f"❌ Error: {str(e)}", get_gallery_images()
-
-def delete_image(image_path):
-    """Delete image from gallery"""
-    if not image_path:
-        return "No image selected", get_gallery_images()
-    
-    try:
-        os.remove(image_path)
-        
-        # Update metadata
-        filename = os.path.basename(image_path)
-        metadata = load_metadata()
-        if filename in metadata:
-            del metadata[filename]
-        save_metadata(metadata)
-        
-        return f"✅ Image deleted!", get_gallery_images()
+        if image_path and os.path.exists(image_path):
+            os.remove(image_path)
+            
+            # Update metadata
+            filename = os.path.basename(image_path)
+            metadata = load_metadata()
+            if filename in metadata:
+                del metadata[filename]
+            save_metadata(metadata)
+            
+            return f"✅ Image deleted!", get_gallery_images()
+        else:
+            return "❌ Image not found", get_gallery_images()
     except Exception as e:
         return f"❌ Error: {str(e)}", get_gallery_images()
 
@@ -131,13 +131,15 @@ with gr.Blocks(title="Image Gallery", theme=gr.themes.Soft()) as demo:
                 )
                 search_btn = gr.Button("🔍 Search")
             
+            with gr.Row():
+                refresh_btn = gr.Button("🔄 Refresh Gallery")
+            
             search_btn.click(
                 search_images,
                 inputs=search_input,
                 outputs=gallery_output
             )
             
-            refresh_btn = gr.Button("🔄 Refresh Gallery")
             refresh_btn.click(
                 lambda: get_gallery_images(),
                 outputs=gallery_output
@@ -148,10 +150,15 @@ with gr.Blocks(title="Image Gallery", theme=gr.themes.Soft()) as demo:
             gr.Markdown("### Upload New Images")
             
             with gr.Row():
-                file_input = gr.File(label="Select Image", file_types=["image"])
+                file_input = gr.File(
+                    label="Select Image",
+                    file_count="single",
+                    file_types=["image"]
+                )
                 upload_btn = gr.Button("Upload")
             
             upload_status = gr.Textbox(label="Status", interactive=False)
+            
             uploaded_gallery = gr.Gallery(
                 label="Recent Uploads",
                 columns=4,
@@ -174,31 +181,15 @@ with gr.Blocks(title="Image Gallery", theme=gr.themes.Soft()) as demo:
                 label="Gallery Images",
                 columns=4,
                 rows=3,
-                object_fit="scale-down"
-            )
-            
-            selected_image = gr.Textbox(
-                label="Selected Image Path",
-                interactive=False
+                object_fit="scale-down",
+                interactive=True,
+                show_label=True
             )
             
             with gr.Row():
-                delete_btn = gr.Button("🗑️ Delete Selected", variant="stop")
                 refresh_manage_btn = gr.Button("🔄 Refresh")
             
             action_status = gr.Textbox(label="Status", interactive=False)
-            
-            manage_gallery.select(
-                lambda x: x if isinstance(x, str) else "",
-                inputs=manage_gallery,
-                outputs=selected_image
-            )
-            
-            delete_btn.click(
-                delete_image,
-                inputs=selected_image,
-                outputs=[action_status, manage_gallery]
-            )
             
             refresh_manage_btn.click(
                 lambda: get_gallery_images(),
@@ -215,7 +206,7 @@ with gr.Blocks(title="Image Gallery", theme=gr.themes.Soft()) as demo:
             - 🔍 Search and filter by filename
             - 🗂️ Organize and manage images
             - 📊 View image metadata (size, format)
-            - 🐳 Run in Docker - no configuration needed
+            - 🐳 Run anywhere with Docker
             
             **Supported Formats:**
             - PNG
@@ -224,10 +215,18 @@ with gr.Blocks(title="Image Gallery", theme=gr.themes.Soft()) as demo:
             - WebP
             
             **Storage:**
-            - Uploads: `images/uploads/`
             - Gallery: `images/gallery/`
             - Metadata: `images/metadata.json`
+            
+            **Version Info:**
+            - Python: 3.13+
+            - Gradio: 6.20.0+
+            - Pillow: 10.2.0+
             """)
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=False
+    )
